@@ -43,21 +43,24 @@ hsb designer start
 
 ### Options
 
-| install.sh | install.ps1 | |
-|---|---|---|
-| `--version 1.4.0` | `-Version 1.4.0` | a specific version (also how to roll back) |
-| `--channel dev` | `-Channel dev` | every build of `dev` instead of releases (needs the Datasabai VPN) |
-| `--modify-path` | `-NoModifyPath` | the shell installer only prints the PATH line unless asked; the PowerShell one adds it to your user PATH unless told not to |
+| install.sh | install.ps1 | environment | |
+|---|---|---|---|
+| `--version 1.4.0` | `-Version 1.4.0` | `HSB_VERSION` | a specific version (also how to roll back) |
+| `--channel dev` | `-Channel dev` | `HSB_CHANNEL` | every build of `dev` instead of releases (needs the Datasabai VPN) |
+| `--no-modify-path` | `-NoModifyPath` | `HSB_NO_MODIFY_PATH=1` | don't add `~/.hubsabai/bin` to your PATH (shell startup file, or Windows user PATH) |
 
-Options go after `sh -s --`, or through a script block in PowerShell:
+The environment variables are the easy way with a one-line install:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/hubsabai/cli/main/install.sh | sh -s -- --channel dev
+curl -fsSL https://raw.githubusercontent.com/hubsabai/cli/main/install.sh | HSB_CHANNEL=dev sh
 ```
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hubsabai/cli/main/install.ps1))) -Channel dev
+$env:HSB_CHANNEL = "dev"; irm https://raw.githubusercontent.com/hubsabai/cli/main/install.ps1 | iex
 ```
+
+The Windows installer runs on the Windows PowerShell 5.1 built into Windows 10 and 11, and on
+PowerShell 7 if you have it.
 
 ## What gets installed
 

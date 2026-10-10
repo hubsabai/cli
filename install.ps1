@@ -1,4 +1,5 @@
-# Hubsabai CLI installer for Windows (PowerShell 5.1 or 7).
+# Hubsabai CLI installer for Windows: runs on the Windows PowerShell 5.1 every Windows 10/11 ships,
+# and on PowerShell 7 (pwsh) when installed.
 #
 #   irm https://raw.githubusercontent.com/hubsabai/cli/main/install.ps1 | iex
 #   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/hubsabai/cli/main/install.ps1))) -Channel dev
@@ -9,12 +10,13 @@
 #
 # Working in WSL? Run install.sh inside WSL instead: install hsb where your workspace files live.
 #
+# HSB_VERSION, HSB_CHANNEL and HSB_NO_MODIFY_PATH=1 do the same as the parameters (handy with irm | iex).
 # HSB_FEED_TOKEN is the stable channel's token; otherwise it is read from %USERPROFILE%\.m2\settings.xml
 # (server hubsabai-sdk, then hubsabai-maven), otherwise asked for. It is never written to disk.
 param(
-    [string]$Version = "",
-    [ValidateSet("stable", "dev")][string]$Channel = "stable",
-    [switch]$NoModifyPath
+    [string]$Version = $env:HSB_VERSION,
+    [string]$Channel = $(if ($env:HSB_CHANNEL) { $env:HSB_CHANNEL } else { "stable" }),
+    [switch]$NoModifyPath = [bool]$env:HSB_NO_MODIFY_PATH
 )
 
 $ErrorActionPreference = "Stop"
@@ -34,6 +36,7 @@ function Fail([string]$Problem, [string]$Fix) {
     throw "hsb install failed: $Problem"
 }
 
+if ($Channel -notin @("stable", "dev")) { Fail "unknown channel '$Channel'" "use stable or dev" }
 if ($Version -like "*-build*") { $Channel = "dev" }
 $Base = if ($Channel -eq "dev") { $DevUrl } else { $StableUrl }
 $ReachFix = if ($Channel -eq "dev") { "connect to the Datasabai VPN, then run this again" } else { "check your network and your token (Azure DevOps, Packaging: Read)" }
@@ -72,7 +75,9 @@ if ($Channel -eq "stable") {
     $Token = if ($env:HSB_FEED_TOKEN) { $env:HSB_FEED_TOKEN } else { Get-SettingsToken }
     if (-not $Token) {
         $Secure = Read-Host "Azure DevOps token (Packaging: Read)" -AsSecureString
-        $Token = [Runtime.InteropServices.Marshal]::PtrToStringAuto([Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure))
+        $Bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($Secure)
+        try { $Token = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($Bstr) }
+        finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($Bstr) }
         if (-not $Token) { Fail "no token given" "create one in Azure DevOps (User settings > Personal access tokens, Packaging: Read)" }
     }
     $Headers["Authorization"] = "Basic " + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("hsb:$Token"))

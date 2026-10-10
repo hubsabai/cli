@@ -4,16 +4,20 @@
 #   curl -fsSL https://raw.githubusercontent.com/hubsabai/cli/main/install.sh | sh
 #   curl -fsSL https://raw.githubusercontent.com/hubsabai/cli/main/install.sh | sh -s -- --channel dev
 #
+# POSIX sh (dash, bash, zsh, busybox, macOS sh). Everything runs from main() at the very end, so a
+# download cut short runs nothing.
+#
 # Installs `hsb` into ~/.hubsabai (versions/<v>/, a `current` pointer, shims in ~/.hubsabai/bin).
 # The Hubsabai Designer is not downloaded here: `hsb designer start` fetches the one matching hsb.
 #
 # Options:
 #   --version <v>     install this version (default: the newest of the channel)
 #   --channel <name>  stable (releases, default) or dev (every build, needs the Datasabai VPN)
-#   --modify-path     add ~/.hubsabai/bin to PATH in your shell's startup file
+#   --no-modify-path  don't add ~/.hubsabai/bin to PATH in your shell's startup file
 #   -h, --help        show this help
 #
-# Environment:
+# Environment (handy with `curl | sh`):
+#   HSB_VERSION, HSB_CHANNEL, HSB_NO_MODIFY_PATH=1   same as the options
 #   HSB_FEED_TOKEN    token for the stable channel; otherwise read from ~/.m2/settings.xml
 #                     (server hubsabai-sdk, then hubsabai-maven), otherwise asked for.
 #
@@ -27,10 +31,13 @@ JAVA_FEATURE=25
 KEEP=2
 
 home_dir="$HOME/.hubsabai"
-version=""
-channel="stable"
-modify_path=0
+version=${HSB_VERSION:-}
+channel=${HSB_CHANNEL:-stable}
+modify_path=1
+[ -n "${HSB_NO_MODIFY_PATH:-}" ] && modify_path=0
 tmp=""
+
+main() {
 
 say() { printf '%s\n' "$*"; }
 info() { printf '  %s\n' "$*"; }
@@ -47,9 +54,10 @@ Hubsabai CLI installer for Linux, WSL and macOS.
 
   --version <v>     install this version (default: the newest of the channel)
   --channel <name>  stable (releases, default) or dev (every build, needs the Datasabai VPN)
-  --modify-path     add ~/.hubsabai/bin to PATH in your shell's startup file
+  --no-modify-path  don't add ~/.hubsabai/bin to PATH in your shell's startup file
   -h, --help        show this help
 
+HSB_VERSION, HSB_CHANNEL and HSB_NO_MODIFY_PATH=1 do the same as the options.
 HSB_FEED_TOKEN is the stable channel's token; otherwise it is read from ~/.m2/settings.xml
 (server hubsabai-sdk, then hubsabai-maven), otherwise asked for.
 EOF
@@ -63,7 +71,7 @@ while [ $# -gt 0 ]; do
     --version=*) version=${1#--version=}; shift ;;
     --channel) channel=${2:?--channel needs a value}; shift 2 ;;
     --channel=*) channel=${1#--channel=}; shift ;;
-    --modify-path) modify_path=1; shift ;;
+    --no-modify-path) modify_path=0; shift ;;
     -h|--help) usage; exit 0 ;;
     *) fail "unknown option: $1" "see --help" ;;
   esac
@@ -143,10 +151,13 @@ fi
 
 # fetch <url> <file>: GET, credentials read by curl from stdin, never from its arguments.
 fetch() {
+  set -- "$1" "$2" -fsSL --retry 2
+  case $1 in https://*) set -- "$@" --proto '=https' --tlsv1.2 ;; esac # never downgrade off HTTPS
+  url=$1; out=$2; shift 2
   if [ -n "$token" ]; then
-    printf 'user = "hsb:%s"\n' "$token" | curl -fsSL --retry 2 -K - -o "$2" "$1"
+    printf 'user = "hsb:%s"\n' "$token" | curl "$@" -K - -o "$out" "$url"
   else
-    curl -fsSL --retry 2 -o "$2" "$1"
+    curl "$@" -o "$out" "$url"
   fi
 }
 reach_fix() {
@@ -212,7 +223,7 @@ printf '%s' "$version" > "$home_dir/current.tmp"
 mv -f "$home_dir/current.tmp" "$home_dir/current"
 
 # keep the current version and the newest other one (hsb update --to <previous> rolls back)
-ls -1 "$home_dir/versions" | grep -v '^\.' | grep -vxF "$version" | sort -rV | tail -n +"$KEEP" \
+ls -1t "$home_dir/versions" | grep -v '^\.' | grep -vxF "$version" | tail -n +"$KEEP" \
   | while IFS= read -r old; do rm -rf "$home_dir/versions/$old"; info "removed $old"; done
 
 say "Installed hsb $version in $home_dir"
@@ -237,7 +248,6 @@ if [ $on_path -eq 0 ]; then
     say ""
     say "Add hsb to your PATH (in $rc), then open a new terminal:"
     say "  $line"
-    say "or run this installer again with --modify-path."
   fi
 fi
 
@@ -247,3 +257,6 @@ say ""
 "$home_dir/bin/hsb" doctor || true
 say ""
 say "Next: hsb workspace init   (hsb designer start downloads the Designer on first use)"
+}
+
+main "$@"
