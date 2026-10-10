@@ -12,7 +12,7 @@ downloaded from Datasabai's package feeds by the installer.
 
 - **JDK 25** on `PATH` or in `JAVA_HOME`
 - Access to the Hubsabai package feed (Datasabai developers)
-- Windows, Linux, or Windows with WSL — install where your workspace files live (inside WSL when
+- Windows, Linux, or Windows with WSL. Install where your workspace files live (inside WSL when
   you work in WSL)
 
 ## Install
@@ -38,4 +38,4 @@ hsb workspace init
 
 ## License
 
-Proprietary — see [LICENSE](LICENSE). Copyright (c) 2026 Datasabai Co., Ltd.
+Proprietary, see [LICENSE](LICENSE). Copyright (c) 2026 Datasabai Co., Ltd.
