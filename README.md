@@ -121,7 +121,7 @@ The first `init` or `clone` asks once where your workspaces live and remembers i
 | Linux, macOS, WSL | `~/hubsabai` |
 
 Both then start the Designer if needed and mount the workspace, so the next step is
-`code <folder>`. `hsb workspace list` shows your workspaces, `hsb workspace open <name>` opens one.
+opening the folder in your IDE. `hsb workspace list` shows your workspaces, `hsb workspace mount <name>` mounts one in the Designer.
 
 ## What gets installed
 
