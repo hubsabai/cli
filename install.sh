@@ -255,8 +255,6 @@ fi
 
 say ""
 "$home_dir/bin/hsb" doctor || true
-say ""
-say "Next: hsb workspace init   (hsb designer start downloads the Designer on first use)"
 }
 
 main "$@"

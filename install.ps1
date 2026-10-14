@@ -47,7 +47,10 @@ $Java = if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\java.e
 if (-not (Get-Command $Java -ErrorAction SilentlyContinue)) {
     Fail "Java $JavaFeature is not installed" "install JDK $JavaFeature (e.g. winget install EclipseAdoptium.Temurin.$JavaFeature.JDK) and open a new terminal"
 }
+# java -version writes to stderr; with ErrorActionPreference=Stop, Windows PowerShell 5.1 turns that into an error
+$ErrorActionPreference = "Continue"
 $JavaLine = (& $Java -version 2>&1 | Select-Object -First 1 | Out-String)
+$ErrorActionPreference = "Stop"
 $JavaVersion = if ($JavaLine -match 'version "(\d+)') { [int]$Matches[1] } else { 0 }
 if ($JavaVersion -lt $JavaFeature) {
     Fail "Java $JavaVersion found, hsb needs $JavaFeature or newer" "install JDK $JavaFeature and put it first on PATH (or set JAVA_HOME)"
@@ -178,8 +181,6 @@ try {
 
     Write-Host ""
     & (Join-Path $Bin "hsb.cmd") doctor
-    Write-Host ""
-    Write-Host "Next: hsb workspace init   (hsb designer start downloads the Designer on first use)"
 } finally {
     Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
 }
