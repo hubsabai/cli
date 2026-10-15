@@ -4,8 +4,8 @@
 workspaces, and runs the Hubsabai Designer that VS Code and AI agents (over MCP) work with.
 
 This repository holds the installers only. The CLI and the Designer are proprietary and are
-downloaded from Datasabai's package feeds: the installer fetches `hsb`, and the first
-`hsb workspace init`, `clone` or `designer start` fetches the Designer of the same version.
+downloaded from Datasabai's package feeds: the installer fetches the Hubsabai CLI (`hsb`), then runs
+`hsb update`, which installs the Hubsabai Designer of the same version. One version, both together.
 
 > **Status:** for Datasabai developers only.
 
@@ -13,8 +13,10 @@ downloaded from Datasabai's package feeds: the installer fetches `hsb`, and the 
 
 Everything below is the same on every system:
 
-- **JDK 25** on `PATH` or in `JAVA_HOME`. The installer checks for it and never installs it;
-  [Eclipse Temurin 25](https://adoptium.net/temurin/releases/?version=25) is the one we use.
+- **JDK 25** on `PATH` or in `JAVA_HOME`, on Linux, macOS and WSL (the Windows install needs none to run
+  Hubsabai: it brings its own Java). The installer checks for it and never installs it;
+  [Eclipse Temurin 25](https://adoptium.net/temurin/releases/?version=25) is the one we use. Building
+  workspaces needs a JDK 25 on every system.
 - **Releases (the default):** a token for the Hubsabai feed, an Azure DevOps personal access
   token with *Packaging: Read*. The installer reads it from `HSB_FEED_TOKEN`, or from
   `~/.m2/settings.xml` (server `hubsabai-sdk` or `hubsabai-maven`, the one your workspaces already
@@ -127,19 +129,19 @@ opening the folder in your IDE. `hsb workspace list` shows your workspaces, `hsb
 
 ```
 ~/.hubsabai/                    %USERPROFILE%\.hubsabai on Windows
-  bin/hsb, bin/hsb.cmd          on your PATH: run the current version
+  bin/hsb (bin/hsb.cmd on Windows)  on your PATH: runs the current version
   current                       the version in use
-  versions/<version>/bin/       that version's launcher
-  versions/<version>/lib/       hsb-cli.jar, and hsb-designer.jar once fetched
-  versions/<version>/designer/  Windows: the Designer app, once fetched (instead of the jar)
+  versions/<version>/bin/       that version's launcher (Linux, macOS, WSL)
+  versions/<version>/lib/       Linux, macOS, WSL: hsb-cli.jar and hsb-designer.jar
+  versions/<version>/cli/       Windows: the Hubsabai CLI app (hsb.exe, with its own Java)
+  versions/<version>/designer/  Windows: the Hubsabai Designer app (with its own Java)
   config                        your settings (workspace root, Designer idle timeout)
 ```
 
 The current version and one previous version are kept.
 
-On Windows the Designer comes as an app with its own Java runtime: Task Manager shows it as
-"Hubsabai Designer". JDK 25 is still required, for `hsb` itself and to build your workspaces.
-`HSB_NO_DESIGNER_IMAGE=1` makes `hsb` use the plain jar instead.
+On Windows the Hubsabai CLI and the Hubsabai Designer are apps with their own Java runtime: Task Manager
+shows "Hubsabai Designer", and no JDK is needed to run them.
 
 ## Update
 

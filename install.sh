@@ -7,8 +7,9 @@
 # POSIX sh (dash, bash, zsh, busybox, macOS sh). Everything runs from main() at the very end, so a
 # download cut short runs nothing.
 #
-# Installs `hsb` into ~/.hubsabai (versions/<v>/, a `current` pointer, shims in ~/.hubsabai/bin).
-# The Hubsabai Designer is not downloaded here: `hsb designer start` fetches the one matching hsb.
+# Installs the Hubsabai CLI (`hsb`) into ~/.hubsabai (versions/<v>/, a `current` pointer, shims in
+# ~/.hubsabai/bin), then runs `hsb update --to <v>`, which downloads the matching Hubsabai Designer and
+# prunes old versions: one command owns what a version is made of, this script only gets `hsb` running.
 #
 # Options:
 #   --version <v>     install this version (default: the newest of the channel)
@@ -28,7 +29,6 @@ STABLE_URL=${HSB_STABLE_URL:-https://pkgs.dev.azure.com/datasabai/Hubsabai/_pack
 DEV_URL=${HSB_DEV_URL:-https://nexus.datasabai.lan/repository/hubsabai-sdk}
 GROUP_PATH=com/datasabai/hsb
 JAVA_FEATURE=25
-KEEP=2
 
 home_dir="$HOME/.hubsabai"
 version=${HSB_VERSION:-}
@@ -178,7 +178,7 @@ case $version in
   *[!A-Za-z0-9._-]*|"") fail "invalid version '$version'" "pass a version like 1.4.0" ;;
 esac
 
-say "Installing hsb $version ($channel)"
+say "Installing Hubsabai CLI $version ($channel)"
 
 # ---------------------------------------------------------------- download + verify
 
@@ -213,7 +213,6 @@ if [ -f "$home_dir/versions/$version/lib/hsb-designer.jar" ]; then
   cp "$home_dir/versions/$version/lib/hsb-designer.jar" "$stage/lib/" # keep a Designer already fetched
 fi
 extract hsb-dist/bin/hsb "$stage/bin/hsb"
-extract hsb-dist/bin/hsb.cmd "$stage/bin/hsb.cmd"
 extract hsb-dist/shim/hsb "$tmp/shim"
 chmod 755 "$stage/bin/hsb" "$tmp/shim"
 rm -rf "$home_dir/versions/$version"
@@ -222,11 +221,7 @@ mv -f "$tmp/shim" "$home_dir/bin/hsb"
 printf '%s' "$version" > "$home_dir/current.tmp"
 mv -f "$home_dir/current.tmp" "$home_dir/current"
 
-# keep the current version and the newest other one (hsb update --to <previous> rolls back)
-ls -1t "$home_dir/versions" | grep -v '^\.' | grep -vxF "$version" | tail -n +"$KEEP" \
-  | while IFS= read -r old; do rm -rf "$home_dir/versions/$old"; info "removed $old"; done
-
-say "Installed hsb $version in $home_dir"
+say "Installed Hubsabai CLI $version in $home_dir"
 
 # ---------------------------------------------------------------- PATH
 
@@ -252,6 +247,11 @@ if [ $on_path -eq 0 ]; then
 fi
 
 # ---------------------------------------------------------------- check
+
+# The rest of the version (the Designer) and the clean-up of old versions: hsb's own job. The token goes in the
+# environment of that one process, never on a command line or to disk.
+say ""
+HSB_FEED_TOKEN=$token "$home_dir/bin/hsb" update --to "$version" || fail "the Hubsabai Designer $version was not installed" "run: hsb update --to $version"
 
 say ""
 "$home_dir/bin/hsb" doctor || true

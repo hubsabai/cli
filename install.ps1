@@ -4,9 +4,9 @@
 #   irm https://raw.githubusercontent.com/hubsabai/cli/main/install.ps1 | iex
 #   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/hubsabai/cli/main/install.ps1))) -Channel dev
 #
-# Installs `hsb` into %USERPROFILE%\.hubsabai (versions\<v>\, a `current` pointer, shims in
-# %USERPROFILE%\.hubsabai\bin, added to your user PATH). The Hubsabai Designer is not downloaded
-# here: `hsb designer start` fetches the one matching hsb.
+# Installs the Hubsabai CLI (`hsb`) into %USERPROFILE%\.hubsabai (versions\<v>\, a `current` pointer, a shim in
+# %USERPROFILE%\.hubsabai\bin, added to your user PATH), then runs `hsb update --to <v>`, which downloads the
+# matching Hubsabai Designer and prunes old versions. No Java is needed: both come with their own runtime.
 #
 # Working in WSL? Run install.sh inside WSL instead: install hsb where your workspace files live.
 #
@@ -26,8 +26,6 @@ $ProgressPreference = "SilentlyContinue"   # Invoke-WebRequest's progress bar sl
 $StableUrl = if ($env:HSB_STABLE_URL) { $env:HSB_STABLE_URL } else { "https://pkgs.dev.azure.com/datasabai/Hubsabai/_packaging/hubsabai-sdk/maven/v1" }
 $DevUrl = if ($env:HSB_DEV_URL) { $env:HSB_DEV_URL } else { "https://nexus.datasabai.lan/repository/hubsabai-sdk" }
 $GroupPath = "com/datasabai/hsb"
-$JavaFeature = 25
-$Keep = 2
 $HomeDir = Join-Path $env:USERPROFILE ".hubsabai"
 
 function Fail([string]$Problem, [string]$Fix) {
@@ -40,21 +38,6 @@ if ($Channel -notin @("stable", "dev")) { Fail "unknown channel '$Channel'" "use
 if ($Version -like "*-build*") { $Channel = "dev" }
 $Base = if ($Channel -eq "dev") { $DevUrl } else { $StableUrl }
 $ReachFix = if ($Channel -eq "dev") { "connect to the Datasabai VPN, then run this again" } else { "check your network and your token (Azure DevOps, Packaging: Read)" }
-
-# ------------------------------------------------------------------ Java
-
-$Java = if ($env:JAVA_HOME -and (Test-Path (Join-Path $env:JAVA_HOME "bin\java.exe"))) { Join-Path $env:JAVA_HOME "bin\java.exe" } else { "java" }
-if (-not (Get-Command $Java -ErrorAction SilentlyContinue)) {
-    Fail "Java $JavaFeature is not installed" "install JDK $JavaFeature (e.g. winget install EclipseAdoptium.Temurin.$JavaFeature.JDK) and open a new terminal"
-}
-# java -version writes to stderr; with ErrorActionPreference=Stop, Windows PowerShell 5.1 turns that into an error
-$ErrorActionPreference = "Continue"
-$JavaLine = (& $Java -version 2>&1 | Select-Object -First 1 | Out-String)
-$ErrorActionPreference = "Stop"
-$JavaVersion = if ($JavaLine -match 'version "(\d+)') { [int]$Matches[1] } else { 0 }
-if ($JavaVersion -lt $JavaFeature) {
-    Fail "Java $JavaVersion found, hsb needs $JavaFeature or newer" "install JDK $JavaFeature and put it first on PATH (or set JAVA_HOME)"
-}
 
 # ------------------------------------------------------------------ token (stable only)
 
@@ -103,24 +86,25 @@ try {
         if (-not $Version) { Fail "no hsb release on the $Channel channel yet" "try -Channel dev" }
     }
     if ($Version -notmatch '^[A-Za-z0-9._-]+$') { Fail "invalid version '$Version'" "pass a version like 1.4.0" }
-    Write-Host "Installing hsb $Version ($Channel)"
+    Write-Host "Installing Hubsabai CLI $Version ($Channel)"
 
     # -------------------------------------------------------------- download + verify
 
-    $JarUrl = "$Base/$GroupPath/hsb-cli/$Version/hsb-cli-$Version.jar"
-    $Jar = Join-Path $Tmp "hsb-cli.jar"
-    try { Get-File $JarUrl $Jar } catch { Fail "can't download hsb-cli $Version" "$ReachFix; check the version with -Version" }
+    # The CLI as a Windows app-image: hsb.exe with its own Java runtime (a zip with one hsb\ folder).
+    $ZipUrl = "$Base/$GroupPath/hsb-cli/$Version/hsb-cli-$Version-windows-x64.zip"
+    $Zip = Join-Path $Tmp "hsb-cli.zip"
+    try { Get-File $ZipUrl $Zip } catch { Fail "can't download the Hubsabai CLI $Version for Windows" "$ReachFix; check the version with -Version" }
     $Expected = $null
     foreach ($Algorithm in @("SHA256", "SHA1")) {
         try {
-            Get-File "$JarUrl.$($Algorithm.ToLower())" (Join-Path $Tmp "sum")
+            Get-File "$ZipUrl.$($Algorithm.ToLower())" (Join-Path $Tmp "sum")
             $Expected = ((Get-Content -Raw (Join-Path $Tmp "sum")).Trim() -split '\s+')[0]
             break
         } catch { continue }
     }
-    if (-not $Expected) { Fail "no checksum published for hsb-cli $Version" "report it: the installer never installs a jar it can't verify" }
-    $Actual = (Get-FileHash -Algorithm $Algorithm $Jar).Hash
-    if ($Actual -ne $Expected.ToUpper()) { Fail "$Algorithm mismatch for hsb-cli $Version (expected $Expected, got $Actual)" "run this again; if it persists, report it" }
+    if (-not $Expected) { Fail "no checksum published for the Hubsabai CLI $Version" "report it: the installer never installs a file it can't verify" }
+    $Actual = (Get-FileHash -Algorithm $Algorithm $Zip).Hash
+    if ($Actual -ne $Expected.ToUpper()) { Fail "$Algorithm mismatch for the Hubsabai CLI $Version (expected $Expected, got $Actual)" "run this again; if it persists, report it" }
     Write-Host "  verified ($Algorithm)"
 
     # -------------------------------------------------------------- install
@@ -130,36 +114,28 @@ try {
     $Stage = Join-Path $Versions ".$Version.$PID"
     $Target = Join-Path $Versions $Version
     if (Test-Path $Stage) { Remove-Item -Recurse -Force $Stage }
-    New-Item -ItemType Directory -Force -Path (Join-Path $Stage "lib"), (Join-Path $Stage "bin"), (Join-Path $HomeDir "bin") | Out-Null
-    Copy-Item $Jar (Join-Path $Stage "lib\hsb-cli.jar")
-    $Fetched = Join-Path $Target "lib\hsb-designer.jar"
-    if (Test-Path $Fetched) { Copy-Item $Fetched (Join-Path $Stage "lib") }   # keep a Designer already fetched
-    $Zip = [IO.Compression.ZipFile]::OpenRead($Jar)
+    New-Item -ItemType Directory -Force -Path (Join-Path $Stage "cli"), (Join-Path $HomeDir "bin") | Out-Null
+    [IO.Compression.ZipFile]::ExtractToDirectory($Zip, (Join-Path $Stage "cli"))
+    $Exe = Join-Path $Stage "cli\hsb\hsb.exe"
+    $CliJar = Join-Path $Stage "cli\hsb\app\hsb-cli.jar"
+    if (-not (Test-Path $Exe) -or -not (Test-Path $CliJar)) { Fail "the Hubsabai CLI $Version archive is incomplete" "report it" }
+    # the PATH shim is a resource of this version's own CLI
+    $Jar = [IO.Compression.ZipFile]::OpenRead($CliJar)
     try {
-        $Entries = @{
-            "hsb-dist/bin/hsb.cmd"  = Join-Path $Stage "bin\hsb.cmd"
-            "hsb-dist/bin/hsb"      = Join-Path $Stage "bin\hsb"
-            "hsb-dist/shim/hsb.cmd" = Join-Path $Tmp "shim.cmd"
-        }
-        foreach ($Name in $Entries.Keys) {
-            $Entry = $Zip.GetEntry($Name)
-            if (-not $Entry) { Fail "hsb-cli $Version has no $Name" "install a newer version" }
-            [IO.Compression.ZipFileExtensions]::ExtractToFile($Entry, $Entries[$Name], $true)
-        }
-    } finally { $Zip.Dispose() }
-    if (Test-Path $Target) { Remove-Item -Recurse -Force $Target }
-    Move-Item $Stage $Target
+        $Entry = $Jar.GetEntry("hsb-dist/shim/hsb.cmd")
+        if (-not $Entry) { Fail "the Hubsabai CLI $Version has no shim" "install a newer version" }
+        [IO.Compression.ZipFileExtensions]::ExtractToFile($Entry, (Join-Path $Tmp "shim.cmd"), $true)
+    } finally { $Jar.Dispose() }
+    # replace only the CLI of this version: a Designer already installed beside it stays
+    New-Item -ItemType Directory -Force -Path $Target | Out-Null
+    if (Test-Path (Join-Path $Target "cli")) { Remove-Item -Recurse -Force (Join-Path $Target "cli") }
+    Move-Item (Join-Path $Stage "cli") (Join-Path $Target "cli")
+    Remove-Item -Recurse -Force $Stage
     Move-Item -Force (Join-Path $Tmp "shim.cmd") (Join-Path $HomeDir "bin\hsb.cmd")
     [IO.File]::WriteAllText((Join-Path $HomeDir "current.tmp"), $Version)
     Move-Item -Force (Join-Path $HomeDir "current.tmp") (Join-Path $HomeDir "current")
 
-    # keep the current version and the newest other one (hsb update --to <previous> rolls back)
-    Get-ChildItem -Directory $Versions | Where-Object { $_.Name -ne $Version -and -not $_.Name.StartsWith(".") } |
-        Sort-Object { [regex]::Replace($_.Name, '\d+', { $args[0].Value.PadLeft(10, '0') }) } -Descending |
-        Select-Object -Skip ($Keep - 1) |
-        ForEach-Object { Remove-Item -Recurse -Force $_.FullName; Write-Host "  removed $($_.Name)" }
-
-    Write-Host "Installed hsb $Version in $HomeDir"
+    Write-Host "Installed Hubsabai CLI $Version in $HomeDir"
 
     # -------------------------------------------------------------- PATH
 
@@ -177,7 +153,16 @@ try {
     }
     $env:Path = "$Bin;$env:Path"
 
-    # -------------------------------------------------------------- check
+    # -------------------------------------------------------------- the rest of the version
+
+    # The Hubsabai Designer, and the clean-up of old versions: hsb's own job. The token goes in the environment of
+    # that one process, never on a command line or to disk.
+    Write-Host ""
+    $Hsb = Join-Path $HomeDir "versions\$Version\cli\hsb\hsb.exe"
+    $PreviousToken = $env:HSB_FEED_TOKEN
+    if ($Channel -eq "stable") { $env:HSB_FEED_TOKEN = $Token }
+    try { & $Hsb update --to $Version } finally { $env:HSB_FEED_TOKEN = $PreviousToken }
+    if ($LASTEXITCODE -ne 0) { Fail "the Hubsabai Designer $Version was not installed" "run: hsb update --to $Version" }
 
     Write-Host ""
     & (Join-Path $Bin "hsb.cmd") doctor
