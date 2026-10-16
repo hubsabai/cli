@@ -161,11 +161,18 @@ try {
     $Hsb = Join-Path $HomeDir "versions\$Version\cli\hsb\hsb.exe"
     $PreviousToken = $env:HSB_FEED_TOKEN
     if ($Channel -eq "stable") { $env:HSB_FEED_TOKEN = $Token }
+    # hsb.exe writes UTF-8; Windows PowerShell 5.1 decodes native output with the OEM codepage (437), which turns
+    # the check marks into "Γ£ô". Decode as UTF-8 for these calls, then restore.
+    $PreviousEncoding = [Console]::OutputEncoding
+    try { [Console]::OutputEncoding = New-Object Text.UTF8Encoding($false) } catch { }
     try { & $Hsb update --to $Version } finally { $env:HSB_FEED_TOKEN = $PreviousToken }
-    if ($LASTEXITCODE -ne 0) { Fail "the Hubsabai Designer $Version was not installed" "run: hsb update --to $Version" }
+    if ($LASTEXITCODE -ne 0) {
+        try { [Console]::OutputEncoding = $PreviousEncoding } catch { }
+        Fail "the Hubsabai Designer $Version was not installed" "run: hsb update --to $Version"
+    }
 
     Write-Host ""
-    & (Join-Path $Bin "hsb.cmd") doctor
+    try { & (Join-Path $Bin "hsb.cmd") doctor } finally { try { [Console]::OutputEncoding = $PreviousEncoding } catch { } }
 } finally {
     Remove-Item -Recurse -Force $Tmp -ErrorAction SilentlyContinue
 }
